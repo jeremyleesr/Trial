@@ -10,14 +10,12 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
         body {
             font-family: Arial, sans-serif;
             background: #1a1a1a;
             color: white;
             overflow: hidden;
         }
-        
         #container {
             display: flex;
             flex-direction: column;
@@ -26,14 +24,12 @@
             min-height: 100vh;
             padding: 20px;
         }
-        
         #gameCanvas {
             border: 2px solid #444;
             background: #2a2a2a;
             max-width: 100%;
             touch-action: none;
         }
-        
         #startButton {
             font-size: 32px;
             padding: 20px 40px;
@@ -46,12 +42,10 @@
             cursor: pointer;
             box-shadow: 0 4px 0 #2d6b2f;
         }
-        
         #startButton:active {
             transform: translateY(2px);
             box-shadow: 0 2px 0 #2d6b2f;
         }
-        
         #fingerDiagram {
             margin: 20px;
             padding: 20px;
@@ -59,7 +53,6 @@
             border-radius: 10px;
             text-align: center;
         }
-        
         .hidden {
             display: none;
         }
@@ -72,68 +65,18 @@
             <p>1=Thumb | 2=Index | 3=Middle | 4=Ring | 5=Pinky</p>
             <p>C D E F G A B C</p>
         </div>
-        
         <canvas id="gameCanvas" width="800" height="400"></canvas>
-        
         <button id="startButton">Start Test</button>
     </div>
-
     <script>
-        // SONG DATA
-        const QUARTER = 500; // milliseconds per quarter note at 120 BPM
-        
-        const JINGLE_BELLS = {
-            id: 'jingle',
-            title: 'Song 1 - No Timing',
-            bpm: 120,
-            notes: [
-                // "Jingle bells, jingle bells, jingle all the way"
-                { note: 'E4', time: 0, duration: QUARTER, hand: 'right' },
-                { note: 'E4', time: QUARTER, duration: QUARTER, hand: 'right' },
-                { note: 'E4', time: QUARTER * 2, duration: QUARTER * 2, hand: 'right' },
-                { note: 'E4', time: QUARTER * 4, duration: QUARTER, hand: 'right' },
-                { note: 'E4', time: QUARTER * 5, duration: QUARTER, hand: 'right' },
-                { note: 'E4', time: QUARTER * 6, duration: QUARTER * 2, hand: 'right' },
-                { note: 'E4', time: QUARTER * 8, duration: QUARTER, hand: 'right' },
-                { note: 'G4', time: QUARTER * 9, duration: QUARTER, hand: 'right' },
-                { note: 'C4', time: QUARTER * 10, duration: QUARTER * 1.5, hand: 'right' },
-                { note: 'D4', time: QUARTER * 11.5, duration: QUARTER * 0.5, hand: 'right' },
-                { note: 'E4', time: QUARTER * 12, duration: QUARTER * 4, hand: 'right' }
-            ]
+        const QUARTER = 500;
+        const SCROLL_TIME = 2200; // Slowed scroll time by 10%
+        const HIT_WINDOW = 200;
+        const NOTE_TYPES = {
+            QUARTER: 'Quarter',
+            HALF: 'Half',
+            WHOLE: 'Whole'
         };
-        
-        const AUNT_RHODY = {
-            id: 'rhody',
-            title: 'Song 2 - With Timing',
-            bpm: 120,
-            notes: [
-                // First line: "Go tell Aunt Rhody"
-                { note: 'E4', time: 0, duration: QUARTER, hand: 'right' },
-                { note: 'D4', time: QUARTER, duration: QUARTER, hand: 'right' },
-                { note: 'C4', time: QUARTER * 2, duration: QUARTER, hand: 'right' },
-                { note: 'D4', time: QUARTER * 3, duration: QUARTER, hand: 'right' },
-                { note: 'E4', time: QUARTER * 4, duration: QUARTER * 2, hand: 'right' }
-            ]
-        };
-
-        // GAME STATE
-        const gameState = {
-            audioContext: null,
-            pitchNode: null,
-            currentPitch: null,
-            currentNote: null,
-            startTime: 0,
-            currentSong: null,
-            isPlaying: false,
-            notes: []
-        };
-
-        // CANVAS
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const startButton = document.getElementById('startButton');
-
-        // NOTE LANES (Y positions)
         const NOTE_LANES = {
             'C4': 300,
             'D4': 270,
@@ -144,131 +87,27 @@
             'B4': 120,
             'C5': 90
         };
-
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
         const HIT_X = 100;
         const NOTE_WIDTH = 40;
         const NOTE_HEIGHT = 20;
-        const SCROLL_TIME = 2000; // ms for note to travel across screen
-
-        // FREQUENCY TO NOTE CONVERSION
-        const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-        
-        function frequencyToNote(freq) {
-            const A4 = 440;
-            const semitones = Math.round(12 * Math.log2(freq / A4));
-            const midi = semitones + 69;
-            const noteIndex = midi % 12;
-            const octave = Math.floor(midi / 12) - 1;
-            return `${NOTE_NAMES[noteIndex]}${octave}`;
-        }
-        
-        function stripOctave(note) {
-            return note ? note.replace(/[0-9]/g, '') : null;
-        }
-
-        // INITIALIZATION
-        async function init() {
-            try {
-                startButton.textContent = 'Initializing...';
-                startButton.disabled = true;
-
-                // Create AudioContext
-                gameState.audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                    latencyHint: 'interactive'
-                });
-
-                // Resume for iOS
-                if (gameState.audioContext.state === 'suspended') {
-                    await gameState.audioContext.resume();
-                }
-
-                // Load AudioWorklet from external file
-                await gameState.audioContext.audioWorklet.addModule('pitch-processor.js');
-
-                // Get microphone
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false
-                    }
-                });
-
-                const micSource = gameState.audioContext.createMediaStreamSource(stream);
-                gameState.pitchNode = new AudioWorkletNode(gameState.audioContext, 'pitch-processor');
-
-                // Receive pitch data
-                gameState.pitchNode.port.onmessage = (event) => {
-                    const { frequency } = event.data;
-                    if (frequency > 0) {
-                        gameState.currentNote = frequencyToNote(frequency);
-                        gameState.currentPitch = frequency;
-                    } else {
-                        gameState.currentNote = null;
-                    }
-                };
-
-                micSource.connect(gameState.pitchNode);
-
-                // Start with first song
-                startButton.textContent = 'Start Song 1';
-                startButton.disabled = false;
-                startButton.onclick = startSong1;
-
-                console.log('Audio initialized successfully');
-            } catch (err) {
-                console.error('Initialization error:', err);
-                alert('Error: ' + err.message);
-                startButton.textContent = 'Error - Reload Page';
-            }
-        }
-
-        function startSong1() {
-            gameState.currentSong = JINGLE_BELLS;
-            gameState.notes = JINGLE_BELLS.notes.map(n => ({ ...n, state: 'pending' }));
-            gameState.startTime = performance.now();
-            gameState.isPlaying = true;
-            startButton.classList.add('hidden');
-            requestAnimationFrame(gameLoop);
-        }
-
-        function gameLoop(timestamp) {
-            if (!gameState.isPlaying) return;
-
-            const elapsed = timestamp - gameState.startTime;
-            
-            update(elapsed);
-            render(elapsed);
-
-            requestAnimationFrame(gameLoop);
-        }
-
         function update(elapsed) {
-            const HIT_WINDOW = 200;
-
             for (const note of gameState.notes) {
                 if (note.state !== 'pending') continue;
-
-                // When the note visually reaches the hit line
                 const hitTime = note.time - SCROLL_TIME;
                 const timeDiff = elapsed - hitTime;
-
-                // Successful hit
                 if (
                     Math.abs(timeDiff) < HIT_WINDOW &&
                     gameState.currentNote &&
                     stripOctave(gameState.currentNote) === stripOctave(note.note)
                 ) {
                     note.state = 'hit';
-                }
-
-                // Missed note
-                else if (timeDiff > HIT_WINDOW) {
+                } else if (timeDiff > HIT_WINDOW) {
                     note.state = 'missed';
                 }
             }
-
-            // Song complete
             if (gameState.notes.every(n => n.state !== 'pending')) {
                 gameState.isPlaying = false;
                 startButton.textContent = 'Try Again';
@@ -276,58 +115,20 @@
                 startButton.onclick = startSong1;
             }
         }
-
         function render(elapsed) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Background
             ctx.fillStyle = '#2a2a2a';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // Hit line
             ctx.strokeStyle = 'rgba(255,255,255,0.3)';
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.moveTo(HIT_X, 0);
             ctx.lineTo(HIT_X, canvas.height);
             ctx.stroke();
-
-            // Render notes
-            for (const note of gameState.notes) {
-                const timeUntilHit = note.time - elapsed;
-                const x = HIT_X + (timeUntilHit / SCROLL_TIME) * (canvas.width - HIT_X);
-                
-                if (x < -NOTE_WIDTH || x > canvas.width) continue;
-
-                const y = NOTE_LANES[note.note] || 200;
-
-                // Color based on state
-                if (note.state === 'hit') {
-                    ctx.fillStyle = '#00ff00';
-                } else if (note.state === 'missed') {
-                    ctx.fillStyle = '#ff0000';
-                } else {
-                    ctx.fillStyle = '#ffffff';
-                }
-
-                ctx.fillRect(x, y, NOTE_WIDTH, NOTE_HEIGHT);
-                
-                // Note label
-                ctx.fillStyle = '#000';
-                ctx.font = '12px Arial';
-                ctx.fillText(note.note, x + 5, y + 14);
-            }
-
-            // Current pitch display
-            if (gameState.currentNote) {
-                ctx.fillStyle = '#ffff00';
-                ctx.font = '24px Arial';
-                ctx.fillText(`Playing: ${gameState.currentNote}`, 20, 30);
+            for (let note of gameState.notes) {
+                const x = HIT_X ..logic hidden 👆);
             }
         }
-
-        // Start on button click
-        startButton.onclick = init;
     </script>
+
 </body>
-</html>
