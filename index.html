@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Piano Pitch Test</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #0f0;
+      font-family: monospace;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+
+    #container {
+      text-align: center;
+    }
+
+    canvas {
+      border: 2px solid #333;
+      background: #000;
+      display: block;
+      margin: 20px auto;
+    }
+
+    button {
+      font-size: 24px;
+      padding: 14px 28px;
+      border-radius: 10px;
+      border: none;
+      background: #0f0;
+      color: #000;
+      font-weight: bold;
+    }
+
+    #status {
+      margin-top: 12px;
+      font-size: 18px;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="container">
+    <canvas id="canvas" width="600" height="200"></canvas>
+    <button id="startBtn">Start</button>
+    <div id="status">Idle</div>
+  </div>
+
+  <script src="pitch.js"></script>
+</body>
+</html>
