@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mic Debug</title>
+
+<style>
+body {
+    margin: 0;
+    background: #111;
+    color: white;
+    font-family: Arial;
+}
+#wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+canvas {
+    background: #222;
+    border: 2px solid #555;
+}
+button {
+    font-size: 26px;
+    padding: 18px 40px;
+    margin-top: 20px;
+    background: #4CAF50;
+    border: none;
+    border-radius: 10px;
+    font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+<div id="wrap">
+    <canvas id="c" width="600" height="200"></canvas>
+    <button id="btn">Start</button>
+</div>
+
+<script>
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
+const btn = document.getElementById("btn");
+
+let rms = 0;
+let alive = false;
+
+btn.onclick = async () => {
+    btn.textContent = "Initializing…";
+    btn.disabled = true;
+
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    await ac.resume();
+
+    await ac.audioWorklet.addModule("./pitch-worklet.js");
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mic = ac.createMediaStreamSource(stream);
+
+    const node = new AudioWorkletNode(ac, "pitch-worklet");
+    const silent = ac.createGain();
+    silent.gain.value = 0;
+
+    mic.connect(node);
+    node.connect(silent);
+    silent.connect(ac.destination);
+
+    node.port.onmessage = e => {
+        rms = e.data.rms;
+        alive = e.data.alive;
+    };
+
+    btn.style.display = "none";
+    draw();
+};
+
+function draw() {
+    ctx.clearRect(0,0,c.width,c.height);
+    ctx.fillStyle = "#fff";
+    ctx.font = "22px Arial";
+
+    ctx.fillText(
+        alive ? `Audio alive | RMS: ${rms.toFixed(5)}` : "No audio",
+        20, 100
+    );
+
+    requestAnimationFrame(draw);
+}
+</script>
+</body>
+</html>
