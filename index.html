@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Piano Pitch</title>
+
+<style>
+body {
+    margin: 0;
+    background: #111;
+    color: white;
+    font-family: Arial;
+}
+#wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+canvas {
+    background: #222;
+    border: 2px solid #555;
+}
+button {
+    font-size: 26px;
+    padding: 18px 40px;
+    margin-top: 20px;
+    background: #4CAF50;
+    border: none;
+    border-radius: 10px;
+    font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+<div id="wrap">
+    <canvas id="c" width="600" height="260"></canvas>
+    <button id="btn">Start</button>
+</div>
+
+<script>
+const c = document.getElementById("c");
+const ctx = c.getContext("2d");
+const btn = document.getElementById("btn");
+
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+function freqToNote(freq) {
+    const A4 = 440;
+    const midi = Math.round(12 * Math.log2(freq / A4) + 69);
+    const name = NOTE_NAMES[midi % 12];
+    const octave = Math.floor(midi / 12) - 1;
+    return name + octave;
+}
+
+let freq = 0;
+let rms = 0;
+let note = null;
+
+btn.onclick = async () => {
+    btn.textContent = "Initializing…";
+    btn.disabled = true;
+
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    await ac.resume();
+
+    await ac.audioWorklet.addModule("./pitch-worklet.js");
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mic = ac.createMediaStreamSource(stream);
+
+    const node = new AudioWorkletNode(ac, "pitch-worklet");
+    const silent = ac.createGain();
+    silent.gain.value = 0;
+
+    mic.connect(node);
+    node.connect(silent);
+    silent.connect(ac.destination);
+
+    node.port.onmessage = e => {
+        rms = e.data.rms;
+        freq = e.data.frequency || 0;
+        note = freq > 0 ? freqToNote(freq) : null;
+    };
+
+    btn.style.display = "none";
+    draw();
+};
+
+function draw() {
+    ctx.clearRect(0,0,c.width,c.height);
+    ctx.fillStyle = "#fff";
+    ctx.font = "22px Arial";
+
+    ctx.fillText(`RMS: ${rms.toFixed(3)}`, 20, 40);
+
+    if (note) {
+        ctx.fillText(`Frequency: ${freq.toFixed(1)} Hz`, 20, 90);
+        ctx.fillText(`Note: ${note}`, 20, 140);
+    } else {
+        ctx.fillText("Play a piano key…", 20, 120);
+    }
+
+    requestAnimationFrame(draw);
+}
+</script>
+</body>
+</html>
