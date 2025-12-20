@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Piano Pitch Game</title>
+<style>
+  html, body {
+    margin: 0;
+    background: #111;
+    color: #fff;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+  }
+  #ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+  }
+  button {
+    font-size: 18px;
+    padding: 10px 16px;
+  }
+  canvas {
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <button id="startBtn">Start</button>
+  <div id="status">Idle</div>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+/* =========================
+   CONFIG
+========================= */
+const HIT_WINDOW_MS = 120;
+const SCROLL_TIME = 2000;
+const NOTE_SPEED = 1 / SCROLL_TIME;
+
+const TARGET_NOTES = [
+  { note: "C4", time: 1.0 },
+  { note: "Eb4", time: 2.0 },
+  { note: "G4", time: 3.0 }
+];
+
+/* =========================
+   CANVAS SETUP
+========================= */
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+const staffY = canvas.height / 2;
+const hitX = canvas.width * 0.4;
+
+/* =========================
+   AUDIO STATE
+========================= */
+let audioCtx;
+let analyser;
+let currentNote = null;
+let lastPitchTime = 0;
+
+/* =========================
+   GAME STATE
+========================= */
+let startTime = null;
+let notes = TARGET_NOTES.map(n => ({ ...n, hit: false, miss: false }));
+
+/* =========================
+   NOTE HELPERS
+========================= */
+function freqToNote(freq) {
+  const A4 = 440;
+  const semitone = 12 * Math.log2(freq / A4);
+  const noteNum = Math.round(semitone) + 57;
+  const names = ["C","C#","D","Eb","E","F","F#","G","Ab","A","Bb","B"];
+  const name = names[(noteNum + 1200) % 12];
+  const octave = Math.floor(noteNum / 12);
+  return name + octave;
+}
+
+/* =========================
+   AUDIO INIT
+========================= */
+async function initAudio() {
+  audioCtx = new AudioContext();
+  await audioCtx.audioWorklet.addModule("pitch-worklet.js");
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const source = audioCtx.createMediaStreamSource(stream);
+
+  const worklet = new AudioWorkletNode(audioCtx, "pitch-processor");
+  analyser = worklet;
+
+  worklet.port.onmessage = e => {
+    if (e.data.freq && e.data.rms > 0.05) {
+      currentNote = freqToNote(e.data.freq);
+      lastPitchTime = performance.now();
+    }
+  };
+
+  source.connect(worklet);
+}
+
+/* =========================
+   DRAW
+========================= */
+function drawStaff() {
+  ctx.strokeStyle = "#666";
+  for (let i = -2; i <= 2; i++) {
+    ctx.beginPath();
+    ctx.moveTo(0, staffY + i * 14);
+    ctx.lineTo(canvas.width, staffY + i * 14);
+    ctx.stroke();
+  }
+}
+
+function noteY(note) {
+  const map = {
+    "C4": 28,
+    "Eb4": 14,
+    "G4": -14
+  };
+  return staffY - (map[note] || 0);
+}
+
+/* =========================
+   GAME LOOP
+========================= */
+function update(now) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawStaff();
+
+  // Green hit window
+  ctx.fillStyle = "rgba(0,255,0,0.15)";
+  ctx.fillRect(hitX - 30, 0, 60, canvas.height);
+  ctx.strokeStyle = "#0f0";
+  ctx.beginPath();
+  ctx.moveTo(hitX, 0);
+  ctx.lineTo(hitX, canvas.height);
+  ctx.stroke();
+
+  const t = (now - startTime) / 1000;
+
+  for (const n of notes) {
+    const progress = (t - n.time) * NOTE_SPEED + 1;
+    const x = hitX + (1 - progress) * canvas.width * 0.5;
+
+    if (x < hitX - 40 && !n.hit && !n.miss) {
+      n.miss = true;
+    }
+
+    if (
+      !n.hit &&
+      !n.miss &&
+      currentNote === n.note &&
+      Math.abs(x - hitX) < 30
+    ) {
+      n.hit = true;
+    }
+
+    ctx.fillStyle = n.hit ? "#0f0" : n.miss ? "#f00" : "#fff";
+    ctx.beginPath();
+    ctx.ellipse(x, noteY(n.note), 12, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  requestAnimationFrame(update);
+}
+
+/* =========================
+   START
+========================= */
+document.getElementById("startBtn").onclick = async () => {
+  document.getElementById("status").textContent = "Initializing...";
+  await initAudio();
+  startTime = performance.now();
+  document.getElementById("status").textContent = "Play!";
+  requestAnimationFrame(update);
+};
+</script>
+
+</body>
+</html>
