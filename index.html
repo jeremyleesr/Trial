@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+<title>Piano Hero – Prototype</title>
+
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #081b12;
+  color: #d8ffe8;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont;
+  overflow: hidden;
+}
+
+#ui {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 10;
+}
+
+button {
+  background: #2ecc71;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+#stats {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+canvas {
+  display: block;
+}
+</style>
+</head>
+
+<body>
+
+<div id="ui">
+  <button id="startBtn">Start</button>
+  <div id="stats">
+    Hz: --<br>
+    Note: --<br>
+    Last: --
+  </div>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+/* =========================
+   CONFIG
+========================= */
+const NOTE_SPEED = 120;          // px/sec
+const HIT_WINDOW_MS = 250;       // forgiving timing window
+const HIT_ZONE_WIDTH = 80;       // px
+const STAFF_HEIGHT_RATIO = 0.20; // bottom 20%
+
+/* =========================
+   CANVAS
+========================= */
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+/* =========================
+   STAFF SETUP
+========================= */
+function drawStaff(yTop, height) {
+  const spacing = height / 8;
+  ctx.strokeStyle = "#cceedd";
+  ctx.lineWidth = 2;
+
+  for (let i = 2; i <= 6; i++) {
+    const y = yTop + i * spacing;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
+  }
+}
+
+// Middle C reference
+const STAFF_NOTES = [
+  { note: "C4", freq: 261.63, offset: 0 },
+  { note: "D4", freq: 293.66, offset: -1 },
+  { note: "E4", freq: 329.63, offset: -2 },
+  { note: "F4", freq: 349.23, offset: -3 },
+  { note: "G4", freq: 392.00, offset: -4 }
+];
+
+function noteToY(note, staffTop, staffHeight) {
+  const centerLine = staffTop + staffHeight * 0.5;
+  const spacing = staffHeight / 8;
+  return centerLine + note.offset * spacing;
+}
+
+/* =========================
+   GAME STATE
+========================= */
+let notes = [];
+let running = false;
+let lastSpawn = 0;
+let lastTime = 0;
+let detectedFreq = null;
+let detectedNote = null;
+let lastResult = "--";
+
+/* =========================
+   NOTE SPAWNER
+========================= */
+function spawnNote() {
+  const n = STAFF_NOTES[Math.floor(Math.random() * STAFF_NOTES.length)];
+  notes.push({
+    ...n,
+    x: canvas.width + 40,
+    hit: false,
+    judged: false
+  });
+}
+
+/* =========================
+   AUDIO WORKLET
+========================= */
+let audioCtx, workletNode;
+
+async function startAudio() {
+  audioCtx = new AudioContext();
+  await audioCtx.audioWorklet.addModule(URL.createObjectURL(new Blob([`
+    class PitchProcessor extends AudioWorkletProcessor {
+      process(inputs) {
+        const input = inputs[0];
+        if (!input || !input[0]) return true;
+
+        const buf = input[0];
+        let rms = 0;
+        for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+        rms = Math.sqrt(rms / buf.length);
+        if (rms < 0.01) return true;
+
+        let crossings = 0;
+        for (let i = 1; i < buf.length; i++) {
+          if (buf[i - 1] <= 0 && buf[i] > 0) crossings++;
+        }
+
+        const freq = crossings * sampleRate / buf.length;
+        this.port.postMessage(freq);
+        return true;
+      }
+    }
+    registerProcessor("pitch-processor", PitchProcessor);
+  `], { type: "application/javascript" })));
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const source = audioCtx.createMediaStreamSource(stream);
+
+  workletNode = new AudioWorkletNode(audioCtx, "pitch-processor");
+  workletNode.port.onmessage = e => {
+    detectedFreq = e.data;
+    detectedNote = closestNote(detectedFreq);
+  };
+
+  source.connect(workletNode);
+}
+
+/* =========================
+   NOTE MATCHING
+========================= */
+function closestNote(freq) {
+  if (!freq) return null;
+  let best = null;
+  let bestDiff = Infinity;
+  for (const n of STAFF_NOTES) {
+    const diff = Math.abs(freq - n.freq);
+    if (diff < bestDiff) {
+      best = n;
+      bestDiff = diff;
+    }
+  }
+  return bestDiff < 25 ? best : null;
+}
+
+/* =========================
+   GAME LOOP
+========================= */
+function loop(ts) {
+  if (!running) return;
+  const dt = (ts - lastTime) / 1000;
+  lastTime = ts;
+
+  if (ts - lastSpawn > 1400) {
+    spawnNote();
+    lastSpawn = ts;
+  }
+
+  notes.forEach(n => n.x -= NOTE_SPEED * dt);
+
+  const staffHeight = canvas.height * STAFF_HEIGHT_RATIO;
+  const staffTop = canvas.height - staffHeight;
+
+  notes.forEach(n => {
+    if (n.judged) return;
+
+    const hitX = canvas.width / 2;
+    const dx = Math.abs(n.x - hitX);
+
+    if (dx < HIT_ZONE_WIDTH / 2) {
+      if (detectedNote && detectedNote.note === n.note) {
+        n.hit = true;
+        n.judged = true;
+        lastResult = "HIT";
+      }
+    }
+
+    if (n.x < hitX - HIT_ZONE_WIDTH && !n.judged) {
+      n.judged = true;
+      lastResult = "MISS";
+    }
+  });
+
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* =========================
+   DRAW
+========================= */
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const staffHeight = canvas.height * STAFF_HEIGHT_RATIO;
+  const staffTop = canvas.height - staffHeight;
+
+  // Hit zone
+  ctx.fillStyle = "rgba(0,255,120,0.18)";
+  ctx.fillRect(
+    canvas.width / 2 - HIT_ZONE_WIDTH / 2,
+    staffTop,
+    HIT_ZONE_WIDTH,
+    staffHeight
+  );
+
+  drawStaff(staffTop, staffHeight);
+
+  // Notes
+  notes.forEach(n => {
+    const y = noteToY(n, staffTop, staffHeight);
+    ctx.fillStyle = n.hit ? "#2ecc71" : "#ffffff";
+    ctx.beginPath();
+    ctx.arc(n.x, y, 10, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  document.getElementById("stats").innerHTML =
+    `Hz: ${detectedFreq ? detectedFreq.toFixed(1) : "--"}<br>
+     Note: ${detectedNote ? detectedNote.note : "--"}<br>
+     Last: ${lastResult}`;
+}
+
+/* =========================
+   START
+========================= */
+document.getElementById("startBtn").onclick = async () => {
+  if (running) return;
+  await startAudio();
+  running = true;
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+};
+</script>
+
+</body>
+</html>
