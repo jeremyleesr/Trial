@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Piano Hero Test</title>
+<style>
+  body {
+    margin: 0;
+    background: #0b1f14;
+    color: white;
+    font-family: system-ui, sans-serif;
+    overflow: hidden;
+  }
+
+  #ui {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+  }
+
+  button {
+    padding: 10px 18px;
+    font-size: 16px;
+    border-radius: 8px;
+    border: none;
+    background: #2ecc71;
+    color: black;
+    cursor: pointer;
+  }
+
+  canvas {
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <button id="startBtn">Start</button>
+  <div id="info">
+    RMS: --<br>
+    Hz: --<br>
+    Note: --<br>
+    Last: --
+  </div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const info = document.getElementById("info");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let audioCtx, worklet, mic;
+let currentFreq = null;
+let currentNote = null;
+let rms = 0;
+
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+
+function freqToNote(freq) {
+  const noteNum = Math.round(12 * Math.log2(freq / 440) + 69);
+  return NOTE_NAMES[noteNum % 12] + Math.floor(noteNum / 12 - 1);
+}
+
+const hitZoneTop = canvas.height * 0.75;
+
+let notes = [];
+let lastResult = "--";
+
+// random test notes
+for (let i = 0; i < 6; i++) {
+  notes.push({
+    note: ["C4","D4","E4","G4"][Math.floor(Math.random()*4)],
+    y: -i * 180,
+    hit: false
+  });
+}
+
+async function startAudio() {
+  audioCtx = new AudioContext();
+  await audioCtx.audioWorklet.addModule("pitch-worklet.js");
+
+  worklet = new AudioWorkletNode(audioCtx, "pitch-processor");
+  worklet.port.onmessage = e => {
+    rms = e.data.rms;
+    if (e.data.freq) {
+      currentFreq = e.data.freq;
+      currentNote = freqToNote(currentFreq);
+    } else {
+      currentFreq = null;
+      currentNote = null;
+    }
+  };
+
+  mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const src = audioCtx.createMediaStreamSource(mic);
+  src.connect(worklet).connect(audioCtx.destination);
+}
+
+document.getElementById("startBtn").onclick = async () => {
+  await startAudio();
+};
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // hit zone (bottom 25%)
+  ctx.fillStyle = "#124d2b";
+  ctx.fillRect(0, hitZoneTop, canvas.width, canvas.height - hitZoneTop);
+
+  // center line
+  ctx.strokeStyle = "#2ecc71";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(canvas.width/2, 0);
+  ctx.lineTo(canvas.width/2, canvas.height);
+  ctx.stroke();
+
+  for (const n of notes) {
+    n.y += 2;
+
+    const inZone = n.y > hitZoneTop && n.y < canvas.height;
+    const match = inZone && currentNote === n.note && rms > 0.03;
+
+    if (match && !n.hit) {
+      n.hit = true;
+      lastResult = "HIT";
+    }
+
+    ctx.fillStyle = n.hit ? "#2ecc71" : "#ffffff";
+    ctx.beginPath();
+    ctx.arc(canvas.width/2, n.y, 14, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  info.innerHTML = `
+    RMS: ${rms.toFixed(3)}<br>
+    Hz: ${currentFreq ? currentFreq.toFixed(1) : "--"}<br>
+    Note: ${currentNote ?? "--"}<br>
+    Last: ${lastResult}
+  `;
+
+  requestAnimationFrame(draw);
+}
+
+draw();
+</script>
+</body>
+</html>
