@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Piano Hero – Debug Build</title>
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #111;
+    color: white;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow: hidden;
+  }
+
+  #ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+  }
+
+  button {
+    font-size: 18px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    border: none;
+    background: #2ecc71;
+    color: black;
+  }
+
+  #debug {
+    margin-top: 10px;
+    font-size: 14px;
+    line-height: 1.4;
+    white-space: pre;
+  }
+
+  canvas {
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <button id="startBtn">Start</button>
+  <div id="debug">Waiting…</div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+/* =====================
+   CONFIG
+===================== */
+const NOTE_SPEED = 200; // pixels per second
+const HIT_WINDOW_PERFECT = 0.04; // seconds
+const HIT_WINDOW_GOOD = 0.09;
+const RMS_THRESHOLD = 0.02;
+
+/* =====================
+   CANVAS
+===================== */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* =====================
+   AUDIO
+===================== */
+let audioCtx;
+let workletNode;
+let lastPitch = null;
+let lastRMS = 0;
+
+async function initAudio() {
+  audioCtx = new AudioContext({ latencyHint: "interactive" });
+
+  await audioCtx.audioWorklet.addModule("pitch-worklet.js");
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const source = audioCtx.createMediaStreamSource(stream);
+
+  workletNode = new AudioWorkletNode(audioCtx, "pitch-processor");
+
+  workletNode.port.onmessage = e => {
+    lastPitch = e.data.pitch;
+    lastRMS = e.data.rms;
+  };
+
+  source.connect(workletNode);
+}
+
+/* =====================
+   NOTES
+===================== */
+const NOTES = [
+  { name: "C4", hz: 261.63 },
+  { name: "D4", hz: 293.66 },
+  { name: "E4", hz: 329.63 },
+  { name: "G4", hz: 392.00 }
+];
+
+function randomNote() {
+  return NOTES[Math.floor(Math.random() * NOTES.length)];
+}
+
+let notes = [];
+let startTime = 0;
+
+/* =====================
+   GAME LOOP
+===================== */
+const debug = document.getElementById("debug");
+
+function spawnNote(time) {
+  const n = randomNote();
+  notes.push({
+    ...n,
+    time,
+    hit: false,
+    result: null
+  });
+}
+
+function pitchMatches(targetHz, detectedHz) {
+  if (!detectedHz) return false;
+  const cents = 1200 * Math.log2(detectedHz / targetHz);
+  return Math.abs(cents) < 40;
+}
+
+function update(now) {
+  const t = (now - startTime) / 1000;
+
+  // spawn notes
+  if (notes.length === 0 || t - notes[notes.length - 1].time > 1.2) {
+    spawnNote(t + 2);
+  }
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // green zone (FULL SCREEN for now)
+  ctx.fillStyle = "#123d1c";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // center line
+  ctx.strokeStyle = "#00ff66";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(canvas.width / 2, 0);
+  ctx.lineTo(canvas.width / 2, canvas.height);
+  ctx.stroke();
+
+  for (const note of notes) {
+    if (note.hit) continue;
+
+    const dt = note.time - t;
+    const x = canvas.width / 2 + dt * NOTE_SPEED;
+
+    // draw note
+    ctx.fillStyle = "white";
+    ctx.beginPath();
+    ctx.arc(x, canvas.height / 2, 12, 0, Math.PI * 2);
+    ctx.fill();
+
+    // hit test
+    if (Math.abs(dt) < HIT_WINDOW_GOOD &&
+        lastRMS > RMS_THRESHOLD &&
+        pitchMatches(note.hz, lastPitch)) {
+
+      note.hit = true;
+      note.result =
+        Math.abs(dt) < HIT_WINDOW_PERFECT ? "PERFECT" : "GOOD";
+    }
+
+    // miss
+    if (dt < -HIT_WINDOW_GOOD) {
+      note.hit = true;
+      note.result = "MISS";
+    }
+  }
+
+  // cleanup
+  notes = notes.filter(n => t - n.time < 2);
+
+  // debug text
+  debug.textContent =
+`RMS: ${lastRMS.toFixed(3)}
+Hz: ${lastPitch ? lastPitch.toFixed(1) : "--"}
+Notes: ${notes.length}
+Last: ${notes.find(n => n.result)?.result || "--"}`;
+
+  requestAnimationFrame(update);
+}
+
+/* =====================
+   START
+===================== */
+document.getElementById("startBtn").onclick = async () => {
+  debug.textContent = "Initializing…";
+  await initAudio();
+  startTime = performance.now();
+  requestAnimationFrame(update);
+};
+</script>
+
+</body>
+</html>
