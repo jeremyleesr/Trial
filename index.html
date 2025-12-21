@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-store" />
+<title>Visual Grand Staff – Clean v1</title>
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0b2a1a;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  #ui {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+    color: #e8fff2;
+  }
+
+  #startBtn {
+    background: #38d979;
+    border: none;
+    border-radius: 14px;
+    padding: 10px 18px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  #label {
+    margin-top: 10px;
+    font-size: 14px;
+    opacity: 0.85;
+  }
+
+  canvas {
+    display: block;
+  }
+</style>
+</head>
+
+<body>
+
+<div id="ui">
+  <button id="startBtn">START</button>
+  <div id="label">Visual grand staff test (visual only)</div>
+</div>
+
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+let running = false;
+let notes = [];
+
+const staffTop = () => canvas.height * 0.7;
+const staffGap = 10;
+
+function staffY(line) {
+  return staffTop() + line * staffGap;
+}
+
+function spawnNote() {
+  notes.push({
+    x: canvas.width + 40,
+    line: Math.floor(Math.random() * 10),
+    speed: 1.5
+  });
+}
+
+let spawnTimer = 0;
+
+function drawStaff() {
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, staffTop() - 30, canvas.width, 140);
+
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i < 10; i++) {
+    ctx.beginPath();
+    ctx.moveTo(0, staffY(i));
+    ctx.lineTo(canvas.width, staffY(i));
+    ctx.stroke();
+  }
+}
+
+function drawNotes() {
+  ctx.fillStyle = "#000";
+  for (const n of notes) {
+    ctx.beginPath();
+    ctx.ellipse(n.x, staffY(n.line), 7, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function loop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (running) {
+    spawnTimer++;
+    if (spawnTimer > 120) {
+      spawnNote();
+      spawnTimer = 0;
+    }
+
+    for (const n of notes) {
+      n.x -= n.speed;
+    }
+
+    notes = notes.filter(n => n.x > -40);
+  }
+
+  drawStaff();
+  drawNotes();
+
+  requestAnimationFrame(loop);
+}
+
+document.getElementById("startBtn").onclick = () => {
+  running = true;
+  notes = [];
+  spawnTimer = 0;
+};
+
+loop();
+</script>
+
+</body>
+</html>
