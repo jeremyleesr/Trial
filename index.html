@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1.0, user-scalable=no"
+/>
+<title>Visual Grand Staff – Clean v1</title>
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0f2b1e;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow: hidden;
+    color: #e8fff2;
+  }
+
+  #ui {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    z-index: 10;
+  }
+
+  #startBtn {
+    background: #38d979;
+    color: #063018;
+    border: none;
+    border-radius: 16px;
+    padding: 10px 18px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  #title {
+    margin-top: 10px;
+    font-size: 14px;
+    opacity: 0.85;
+  }
+
+  canvas {
+    display: block;
+  }
+</style>
+</head>
+
+<body>
+  <div id="ui">
+    <button id="startBtn">START</button>
+    <div id="title">Visual grand staff test (visual only)</div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+<script>
+/* =========================================================
+   CANVAS SETUP
+========================================================= */
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resizeCanvas);
+resizeCanvas();
+
+/* =========================================================
+   STAFF CONFIG
+========================================================= */
+
+// Staff occupies bottom portion of screen
+const STAFF_HEIGHT_RATIO = 0.28;
+
+function getStaff() {
+  const height = canvas.height * STAFF_HEIGHT_RATIO;
+  const top = canvas.height - height - 20;
+  return {
+    top,
+    height,
+    left: 40,
+    right: canvas.width - 20
+  };
+}
+
+// Distance between staff lines
+function lineSpacing(staff) {
+  return staff.height / 6;
+}
+
+// Map staff position index to Y coordinate
+// 0 = bottom line, 1 = space above, etc.
+function staffY(staff, index) {
+  const spacing = lineSpacing(staff);
+  return staff.top + staff.height - spacing - index * (spacing / 2);
+}
+
+/* =========================================================
+   NOTE DATA (visual test only)
+========================================================= */
+
+const NOTE_POSITIONS = [
+  0, 1, 2, 3, 4, 5, 6, 7, 8
+];
+
+let notes = [];
+let running = false;
+
+/* =========================================================
+   NOTE SPAWNING
+========================================================= */
+
+function spawnNote() {
+  const staff = getStaff();
+  const position =
+    NOTE_POSITIONS[Math.floor(Math.random() * NOTE_POSITIONS.length)];
+
+  notes.push({
+    x: staff.right + 30,
+    position,
+    speed: 120 // pixels per second
+  });
+}
+
+/* =========================================================
+   DRAWING
+========================================================= */
+
+function drawStaff(staff) {
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, staff.top - 20, canvas.width, staff.height + 40);
+
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 2;
+
+  const spacing = lineSpacing(staff);
+
+  for (let i = 0; i < 5; i++) {
+    const y = staff.top + spacing * (i + 1);
+    ctx.beginPath();
+    ctx.moveTo(staff.left, y);
+    ctx.lineTo(staff.right, y);
+    ctx.stroke();
+  }
+}
+
+function drawNote(note, staff) {
+  const y = staffY(staff, note.position);
+
+  // Note head
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.ellipse(note.x, y, 7, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Stem (simple rule: stems up)
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(note.x + 7, y);
+  ctx.lineTo(note.x + 7, y - 28);
+  ctx.stroke();
+}
+
+/* =========================================================
+   MAIN LOOP
+========================================================= */
+
+let lastTime = 0;
+let spawnTimer = 0;
+
+function update(time) {
+  if (!running) return;
+
+  const delta = (time - lastTime) / 1000;
+  lastTime = time;
+
+  spawnTimer += delta;
+  if (spawnTimer > 1.2) {
+    spawnNote();
+    spawnTimer = 0;
+  }
+
+  const staff = getStaff();
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawStaff(staff);
+
+  notes.forEach(note => {
+    note.x -= note.speed * delta;
+    drawNote(note, staff);
+  });
+
+  // Remove notes that left screen
+  notes = notes.filter(note => note.x > staff.left - 40);
+
+  requestAnimationFrame(update);
+}
+
+/* =========================================================
+   START BUTTON
+========================================================= */
+
+document.getElementById("startBtn").addEventListener("click", () => {
+  if (running) return;
+  running = true;
+  notes = [];
+  lastTime = performance.now();
+  requestAnimationFrame(update);
+});
+</script>
+</body>
+</html>
