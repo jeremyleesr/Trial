@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Visual Grand Staff Test v1.4</title>
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #111;
+    overflow: hidden;
+    touch-action: none;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  #ui {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    color: #ddd;
+  }
+
+  #startBtn {
+    background: #4CAF50;
+    color: #000;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 18px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  #label {
+    margin-top: 10px;
+    font-size: 14px;
+    opacity: 0.8;
+  }
+
+  canvas {
+    position: fixed;
+    left: 0;
+    top: 0;
+  }
+</style>
+</head>
+
+<body>
+
+<div id="ui">
+  <button id="startBtn">START</button>
+  <div id="label">Visual grand staff test (v1.4)</div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+/* ============================================================
+   v1.4 — Landscape-locked, iOS-safe canvas
+   ============================================================ */
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+// ----- Visual constants -----
+const STAFF_LINES = 5;
+const STAFF_GAP = 14;          // space between staff lines
+const GRAND_GAP = STAFF_GAP * 2;
+const NOTE_RADIUS = 6;
+const STEM_HEIGHT = 28;
+
+let notes = [];
+let running = false;
+let lastTime = 0;
+
+// -------------------------------------------------------------
+// Force LANDSCAPE dimensions regardless of device orientation
+// -------------------------------------------------------------
+function resizeCanvas() {
+  const vv = window.visualViewport;
+
+  let w = vv ? vv.width : window.innerWidth;
+  let h = vv ? vv.height : window.innerHeight;
+
+  // Force landscape
+  if (h > w) {
+    [w, h] = [h, w];
+  }
+
+  canvas.width = Math.floor(w * window.devicePixelRatio);
+  canvas.height = Math.floor(h * window.devicePixelRatio);
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
+
+  ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+}
+
+resizeCanvas();
+setTimeout(resizeCanvas, 100); // iOS safety pass
+
+// -------------------------------------------------------------
+// Staff layout (locked to bottom portion of screen)
+// -------------------------------------------------------------
+function getStaffLayout() {
+  const marginBottom = 40;
+  const staffHeight = STAFF_GAP * (STAFF_LINES - 1);
+
+  const totalHeight =
+    staffHeight * 2 + GRAND_GAP;
+
+  const baseY = canvas.height / window.devicePixelRatio - totalHeight - marginBottom;
+
+  return {
+    trebleTop: baseY,
+    bassTop: baseY + staffHeight + GRAND_GAP,
+    staffHeight
+  };
+}
+
+// -------------------------------------------------------------
+// Draw staff
+// -------------------------------------------------------------
+function drawStaff(yTop) {
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 2;
+
+  for (let i = 0; i < STAFF_LINES; i++) {
+    const y = yTop + i * STAFF_GAP;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
+  }
+}
+
+// -------------------------------------------------------------
+// Notes
+// -------------------------------------------------------------
+function spawnNotes() {
+  notes = [];
+  const layout = getStaffLayout();
+  const width = canvas.width / window.devicePixelRatio;
+
+  const positions = [
+    layout.trebleTop + STAFF_GAP * 2,
+    layout.trebleTop + STAFF_GAP * 1,
+    layout.trebleTop + STAFF_GAP * 3,
+    layout.bassTop + STAFF_GAP * 2,
+    layout.bassTop + STAFF_GAP * 3
+  ];
+
+  for (let i = 0; i < positions.length; i++) {
+    notes.push({
+      x: width + i * 120,
+      y: positions[i],
+      speed: 60
+    });
+  }
+}
+
+function drawNote(note) {
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.ellipse(note.x, note.y, NOTE_RADIUS + 2, NOTE_RADIUS, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(note.x + NOTE_RADIUS + 2, note.y);
+  ctx.lineTo(note.x + NOTE_RADIUS + 2, note.y - STEM_HEIGHT);
+  ctx.stroke();
+}
+
+// -------------------------------------------------------------
+// Main loop
+// -------------------------------------------------------------
+function loop(ts) {
+  if (!running) return;
+  const dt = (ts - lastTime) / 1000;
+  lastTime = ts;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const layout = getStaffLayout();
+  drawStaff(layout.trebleTop);
+  drawStaff(layout.bassTop);
+
+  for (const n of notes) {
+    n.x -= n.speed * dt;
+    drawNote(n);
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// -------------------------------------------------------------
+// Start button
+// -------------------------------------------------------------
+document.getElementById("startBtn").onclick = () => {
+  spawnNotes();
+  running = true;
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+};
+
+// -------------------------------------------------------------
+// Orientation / resize safety
+// -------------------------------------------------------------
+window.visualViewport?.addEventListener("resize", () => {
+  setTimeout(resizeCanvas, 60);
+});
+window.addEventListener("resize", () => {
+  setTimeout(resizeCanvas, 60);
+});
+</script>
+
+</body>
+</html>
