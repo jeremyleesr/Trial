@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta
+  name="viewport"
+  content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+/>
+
+<title>Piano Hero – Visual Build v1.7</title>
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    overflow: hidden;
+    touch-action: none;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont;
+  }
+
+  #rotateNotice {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    z-index: 999;
+    font-size: 20px;
+  }
+
+  #ui {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+  }
+
+  #startBtn {
+    background: #3ddc84;
+    color: #000;
+    border: none;
+    border-radius: 16px;
+    padding: 10px 18px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  canvas {
+    display: block;
+  }
+</style>
+</head>
+
+<body>
+
+<div id="rotateNotice">
+  🔄 Rotate device to landscape<br><br>
+  Piano Hero is played sideways
+</div>
+
+<div id="ui">
+  <button id="startBtn">START</button>
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+(() => {
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  let W = 0, H = 0;
+  let running = false;
+
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  /* ---------- STAFF LAYOUT (v1.7 FIXED) ---------- */
+
+  const STAFF_RATIO = 0.25;
+  const STAFF_MIN_PX = 220; // ← critical fix for clipping
+
+  let staffTop = 0;
+  let staffHeight = 0;
+  let lineGap = 0;
+
+  /* ---------- NOTES ---------- */
+
+  const notes = [
+    { pitch: 6, x: 0.95 },
+    { pitch: 4, x: 0.80 },
+    { pitch: 2, x: 0.65 },
+    { pitch: -1, x: 0.50 },
+    { pitch: -3, x: 0.35 },
+    { pitch: -5, x: 0.20 }
+  ];
+
+  function resize() {
+    W = window.innerWidth;
+    H = window.innerHeight;
+
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    staffHeight = Math.max(H * STAFF_RATIO, STAFF_MIN_PX);
+    staffTop = 0;
+
+    // 5 lines per staff, treble + bass + gap
+    const totalLineCount = 11;
+    lineGap = staffHeight / (totalLineCount + 2);
+  }
+
+  function drawStaff() {
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, staffTop, W, staffHeight);
+
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1.5;
+
+    let y = staffTop + lineGap * 2;
+
+    // Treble staff (5 lines)
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+      y += lineGap;
+    }
+
+    // Gap between staves
+    y += lineGap * 1.5;
+
+    // Bass staff (5 lines)
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+      y += lineGap;
+    }
+  }
+
+  function pitchToY(pitch) {
+    // 0 = middle gap between staves
+    const centerY = staffTop + staffHeight / 2;
+    return centerY - pitch * (lineGap / 2);
+  }
+
+  function drawNotes() {
+    ctx.fillStyle = "#000";
+    ctx.strokeStyle = "#000";
+
+    const radius = lineGap * 0.55;
+
+    for (const n of notes) {
+      const x = W * n.x;
+      const y = pitchToY(n.pitch);
+
+      ctx.beginPath();
+      ctx.ellipse(x, y, radius * 1.2, radius, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // stem
+      ctx.beginPath();
+      ctx.moveTo(x + radius * 1.1, y);
+      ctx.lineTo(x + radius * 1.1, y - lineGap * 2);
+      ctx.stroke();
+    }
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+    drawStaff();
+    drawNotes();
+  }
+
+  function loop() {
+    if (!running) return;
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  function checkOrientation() {
+    const landscape = window.innerWidth > window.innerHeight;
+    document.getElementById("rotateNotice").style.display =
+      landscape ? "none" : "flex";
+  }
+
+  document.getElementById("startBtn").onclick = () => {
+    running = true;
+    loop();
+  };
+
+  // --- iOS SAFETY: delay first draw ---
+  function safeInit() {
+    resize();
+    checkOrientation();
+    requestAnimationFrame(() => {
+      resize();
+      render();
+    });
+  }
+
+  window.addEventListener("resize", safeInit);
+  window.addEventListener("orientationchange", () => {
+    setTimeout(safeInit, 200);
+  });
+
+  safeInit();
+})();
+</script>
+
+</body>
+</html>
