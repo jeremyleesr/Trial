@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Piano Hero – Visual Staff v1.8</title>
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0b2a1c;
+    overflow: hidden;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  #ui {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 10;
+  }
+
+  button {
+    background: #2ecc71;
+    border: none;
+    color: #083b24;
+    font-size: 16px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+
+  #label {
+    margin-top: 8px;
+    color: #eafff3;
+    opacity: 0.85;
+    font-size: 14px;
+  }
+
+  canvas {
+    display: block;
+  }
+</style>
+</head>
+
+<body>
+
+<div id="ui">
+  <button id="startBtn">Start</button>
+  <div id="label">v1.8 – visual only (top-hug staff)</div>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+/* =========================
+   Canvas
+========================= */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+/* =========================
+   Layout
+========================= */
+const STAFF_AREA_RATIO = 0.22;
+const STAFF_AREA_HEIGHT = canvas.height * STAFF_AREA_RATIO;
+const STAFF_BOTTOM = canvas.height - 10;
+const STAFF_TOP = STAFF_BOTTOM - STAFF_AREA_HEIGHT;
+
+const STAFF_LEFT = 30;
+const STAFF_RIGHT = canvas.width - 30;
+
+const LINE_GAP = 14;
+
+// Treble + Bass
+const TREBLE_TOP = STAFF_TOP + 12;
+const BASS_TOP = TREBLE_TOP + LINE_GAP * 6 + 28;
+
+// Hit zone
+const HIT_X = canvas.width * 0.6;
+const HIT_WIDTH = 60;
+
+// Scroll
+const SCROLL_SPEED = 140;
+
+/* =========================
+   Notes (visual test data)
+   pitch: staff steps
+   0 = Middle C
+========================= */
+const notes = [
+  { pitch: 7, time: 0.0 },
+  { pitch: 4, time: 1.0 },
+  { pitch: 2, time: 2.0 },
+  { pitch: 0, time: 3.0 },
+  { pitch: -2, time: 4.0 },
+  { pitch: -5, time: 5.0 },
+  { pitch: -8, time: 6.0 },
+];
+
+let startTime = null;
+let running = false;
+
+/* =========================
+   Helpers
+========================= */
+function pitchToY(pitch) {
+  // Middle C sits between staffs
+  const middleCY = TREBLE_TOP + LINE_GAP * 4 + LINE_GAP;
+  return middleCY - pitch * (LINE_GAP / 2);
+}
+
+function drawStaff(topY) {
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i < 5; i++) {
+    const y = topY + i * LINE_GAP;
+    ctx.beginPath();
+    ctx.moveTo(STAFF_LEFT, y);
+    ctx.lineTo(STAFF_RIGHT, y);
+    ctx.stroke();
+  }
+}
+
+function drawLedgerLines(x, pitch) {
+  ctx.strokeStyle = "#000";
+  const y = pitchToY(pitch);
+
+  // Above treble
+  if (y < TREBLE_TOP) {
+    for (let ly = TREBLE_TOP - LINE_GAP; ly >= y; ly -= LINE_GAP) {
+      ctx.beginPath();
+      ctx.moveTo(x - 12, ly);
+      ctx.lineTo(x + 12, ly);
+      ctx.stroke();
+    }
+  }
+
+  // Below bass
+  const bassBottom = BASS_TOP + LINE_GAP * 4;
+  if (y > bassBottom) {
+    for (let ly = bassBottom + LINE_GAP; ly <= y; ly += LINE_GAP) {
+      ctx.beginPath();
+      ctx.moveTo(x - 12, ly);
+      ctx.lineTo(x + 12, ly);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawNote(x, pitch) {
+  const y = pitchToY(pitch);
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(-0.3);
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 8, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  drawLedgerLines(x, pitch);
+}
+
+/* =========================
+   Loop
+========================= */
+function loop(timestamp) {
+  if (!startTime) startTime = timestamp;
+  const elapsed = (timestamp - startTime) / 1000;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Staff background (paper)
+  ctx.fillStyle = "#f9f9f7";
+  ctx.fillRect(0, STAFF_TOP - 8, canvas.width, STAFF_AREA_HEIGHT + 16);
+
+  // Hit zone
+  ctx.fillStyle = "rgba(0, 200, 120, 0.25)";
+  ctx.fillRect(HIT_X - HIT_WIDTH / 2, STAFF_TOP - 8, HIT_WIDTH, STAFF_AREA_HEIGHT + 16);
+
+  // Staffs
+  drawStaff(TREBLE_TOP);
+  drawStaff(BASS_TOP);
+
+  // Notes
+  for (const note of notes) {
+    const x = STAFF_RIGHT - (elapsed - note.time) * SCROLL_SPEED;
+    if (x < STAFF_LEFT - 40 || x > STAFF_RIGHT + 40) continue;
+    drawNote(x, note.pitch);
+  }
+
+  if (running) requestAnimationFrame(loop);
+}
+
+/* =========================
+   Controls
+========================= */
+document.getElementById("startBtn").onclick = () => {
+  startTime = null;
+  running = true;
+  requestAnimationFrame(loop);
+};
+</script>
+
+</body>
+</html>
