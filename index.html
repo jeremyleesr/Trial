@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+/>
+<title>FOUNDATION v1.0 – Locked Grand Staff</title>
+
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #0b2a1a;
+    color: #e8f5ee;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow: hidden;
+  }
+
+  #rotate-warning {
+    position: fixed;
+    inset: 0;
+    background: #0b2a1a;
+    color: #e8f5ee;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 1.2rem;
+    z-index: 999;
+  }
+
+  #ui {
+    padding: 12px 16px;
+  }
+
+  #startBtn {
+    background: #2ecc71;
+    color: #083018;
+    border: none;
+    border-radius: 14px;
+    padding: 10px 18px;
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  /* STAFF CONTAINER — LOCKED BY WIDTH */
+  #staffArea {
+    width: 100vw;
+    height: 0;
+    padding-top: 25%;
+    background: #f7f7f7;
+    position: relative;
+    overflow: hidden;
+  }
+
+  canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+  }
+</style>
+</head>
+
+<body>
+
+<div id="rotate-warning">
+  Please rotate your device to landscape.
+</div>
+
+<div id="ui">
+  <button id="startBtn">GO</button>
+  <div>FOUNDATION v1.0 – visual only</div>
+</div>
+
+<div id="staffArea">
+  <canvas id="canvas"></canvas>
+</div>
+
+<script>
+/* ===========================
+   ORIENTATION GUARD
+=========================== */
+function checkOrientation() {
+  const ok = window.innerWidth > window.innerHeight;
+  document.getElementById("rotate-warning").style.display =
+    ok ? "none" : "flex";
+}
+checkOrientation();
+window.addEventListener("orientationchange", checkOrientation);
+
+/* ===========================
+   CANVAS — LOCK ONCE
+=========================== */
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const staffArea = document.getElementById("staffArea");
+canvas.width = window.innerWidth;
+canvas.height = staffArea.getBoundingClientRect().height;
+
+/* ===========================
+   STAFF GEOMETRY (PERMANENT)
+=========================== */
+const STAFF_LINES = 5;
+const staffGap = canvas.height / 10;
+
+const trebleTop = staffGap * 1.5;
+const bassTop   = trebleTop + staffGap * 7;
+
+const hitZoneX = canvas.width * 0.5;
+
+/* ===========================
+   NOTES (VISUAL ONLY)
+=========================== */
+let notes = [];
+let running = false;
+
+function spawnNotes() {
+  notes = [
+    { x: canvas.width + 100, pitch: 4 },
+    { x: canvas.width + 260, pitch: 1 },
+    { x: canvas.width + 420, pitch: -2 },
+    { x: canvas.width + 580, pitch: -5 }
+  ];
+}
+
+function pitchToY(pitch) {
+  const middleCY =
+    trebleTop + staffGap * 4 + staffGap * 1.5;
+  return middleCY - pitch * (staffGap / 2);
+}
+
+/* ===========================
+   DRAWING
+=========================== */
+function drawStaff(yTop) {
+  ctx.strokeStyle = "#222";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < STAFF_LINES; i++) {
+    const y = yTop + i * staffGap;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
+  }
+}
+
+function drawLedgerLines(x, pitch) {
+  const y = pitchToY(pitch);
+  const topTreble = trebleTop;
+  const bottomBass = bassTop + staffGap * 4;
+
+  if (y < topTreble || y > bottomBass) {
+    ctx.strokeStyle = "#222";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x - 12, y);
+    ctx.lineTo(x + 12, y);
+    ctx.stroke();
+  }
+}
+
+function drawNote(note) {
+  const y = pitchToY(note.pitch);
+  drawLedgerLines(note.x, note.pitch);
+
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.ellipse(note.x, y, staffGap * 0.45, staffGap * 0.32, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawHitZone() {
+  ctx.fillStyle = "rgba(46, 204, 113, 0.25)";
+  ctx.fillRect(hitZoneX - 30, 0, 60, canvas.height);
+}
+
+/* ===========================
+   LOOP
+=========================== */
+let last = null;
+
+function loop(t) {
+  if (!running) return;
+  if (!last) last = t;
+  const dt = (t - last) / 1000;
+  last = t;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawHitZone();
+  drawStaff(trebleTop);
+  drawStaff(bassTop);
+
+  for (const n of notes) {
+    n.x -= 90 * dt;
+    drawNote(n);
+  }
+
+  requestAnimationFrame(loop);
+}
+
+/* ===========================
+   START
+=========================== */
+document.getElementById("startBtn").onclick = () => {
+  spawnNotes();
+  running = true;
+  last = null;
+  requestAnimationFrame(loop);
+};
+</script>
+
+</body>
+</html>
