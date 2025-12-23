@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>v1.8.2 – visual only (TOP grand staff)</title>
+
+  <!-- Lock landscape -->
+  <meta name="screen-orientation" content="landscape">
+  <meta name="orientation" content="landscape">
+
+  <meta name="viewport"
+        content="width=device-width, height=device-height,
+                 initial-scale=1.0, user-scalable=no">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #0b2b1f;
+      overflow: hidden;
+      touch-action: none;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #eafff5;
+    }
+
+    #ui {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      z-index: 10;
+    }
+
+    button {
+      background: #2ecc71;
+      border: none;
+      color: #083018;
+      font-size: 18px;
+      padding: 10px 18px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+
+    #label {
+      margin-top: 10px;
+      opacity: 0.85;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    /* Portrait lock overlay */
+    @media screen and (orientation: portrait) {
+      body::before {
+        content: "Rotate device to landscape";
+        position: fixed;
+        inset: 0;
+        background: #0b2b1f;
+        color: #eafff5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        z-index: 9999;
+      }
+
+      canvas, #ui {
+        display: none;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="ui">
+    <button id="startBtn">Start</button>
+    <div id="label">v1.8.2 – visual only (top grand staff)</div>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+
+    let W, H;
+    function resize() {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener("resize", resize);
+
+    /* ===== Layout ===== */
+    const STAFF_AREA_RATIO = 0.25; // TOP 25%
+    const HIT_ZONE_WIDTH = 90;
+
+    const notes = [];
+    const NOTE_SPEED = 140;
+    let running = false;
+    let lastTime = 0;
+
+    /* Vertical pitch positions (visual only) */
+    const PITCH_POSITIONS = [
+      -4, -2, 0, 2, 4, 6, 8,
+      10, 12, 14, 16, 18,
+      22, 24,
+      26, 28, 30, 32, 34,
+      36, 38
+    ];
+
+    function spawnNote() {
+      const p = PITCH_POSITIONS[Math.floor(Math.random() * PITCH_POSITIONS.length)];
+      notes.push({ x: W + 40, pitch: p });
+    }
+
+    function drawStaffLines(yTop, spacing) {
+      ctx.strokeStyle = "#000";
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, yTop + i * spacing);
+        ctx.lineTo(W, yTop + i * spacing);
+        ctx.stroke();
+      }
+    }
+
+    function drawLedger(x, y) {
+      ctx.beginPath();
+      ctx.moveTo(x - 14, y);
+      ctx.lineTo(x + 14, y);
+      ctx.stroke();
+    }
+
+    function drawNote(note, centerY, spacing) {
+      const y = centerY - note.pitch * (spacing / 2);
+
+      ctx.fillStyle = "#000";
+      ctx.beginPath();
+      ctx.ellipse(note.x, y, 9, 6.5, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      const topLimit = centerY - 14 * (spacing / 2);
+      const bottomLimit = centerY + 14 * (spacing / 2);
+
+      if (y < topLimit) {
+        for (let ly = topLimit; ly >= y; ly -= spacing) drawLedger(note.x, ly);
+      }
+      if (y > bottomLimit) {
+        for (let ly = bottomLimit; ly <= y; ly += spacing) drawLedger(note.x, ly);
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      const staffHeight = H * STAFF_AREA_RATIO;
+      const staffTop = 0;
+
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(0, staffTop, W, staffHeight);
+
+      const hitX = W / 2 - HIT_ZONE_WIDTH / 2;
+      ctx.fillStyle = "rgba(46,204,113,0.35)";
+      ctx.fillRect(hitX, staffTop, HIT_ZONE_WIDTH, staffHeight);
+
+      const spacing = staffHeight / 14;
+      const centerY = staffTop + staffHeight / 2;
+
+      drawStaffLines(centerY - spacing * 5, spacing); // treble
+      drawStaffLines(centerY + spacing, spacing);     // bass
+
+      ctx.strokeStyle = "#000";
+      for (const n of notes) drawNote(n, centerY, spacing);
+    }
+
+    function update(dt) {
+      for (const n of notes) n.x -= NOTE_SPEED * dt;
+      while (notes.length && notes[0].x < -40) notes.shift();
+    }
+
+    function loop(ts) {
+      if (!running) return;
+      const dt = (ts - lastTime) / 1000;
+      lastTime = ts;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    document.getElementById("startBtn").onclick = () => {
+      if (running) return;
+      running = true;
+      lastTime = performance.now();
+      setInterval(spawnNote, 900);
+      requestAnimationFrame(loop);
+    };
+  </script>
+</body>
+</html>
